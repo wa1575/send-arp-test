@@ -54,7 +54,7 @@ int main(int argc, char* argv[]) {
      EthArpPacket packet;
 
 
-   //request 보내기 -> reply 받으면 거기서 mac 꺼낼 수 있음!
+   //1단계 : victim에게 request 보내기 -> reply 받으면 거기서 mac 꺼낼 수 있음!
      packet.eth_.dmac_ = Mac("FF:FF:FF:FF:FF:FF"); //브로드캐스팅
      packet.eth_.smac_ = Mac(myMAC);
      packet.eth_.type_ = htons(EthHdr::Arp);
@@ -99,7 +99,7 @@ int main(int argc, char* argv[]) {
              break;
 
          }
-
+   //2단계 : 1단계에서 얻은 victim's의 mac을 바탕으로 arp reply...! 
     packet.eth_.dmac_ = Mac(sMAC); //목적지 mac 얻는 법??? -> 이번 과제 핵심
     packet.eth_.smac_ = Mac(myMAC);
     packet.eth_.type_ = htons(EthHdr::Arp);
