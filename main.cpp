@@ -31,7 +31,7 @@ int main(int argc, char* argv[]) {
 		return -1;
 	}
 
-	char* dev = argv[1];
+    char* dev = argv[1];
     u_char myMAC[6]; //호스트 맥
     get_mMAC(dev, myMAC);
     u_char myIP[4];
@@ -40,7 +40,7 @@ int main(int argc, char* argv[]) {
     u_char sMAC[6];
     u_char sender_ip[4]; //argv[2] victim, 핫스팟 킨 노트북
     u_char target_ip[4]; //argv[3] 라우터 ip... 대체할게없다...
-	char errbuf[PCAP_ERRBUF_SIZE];
+    char errbuf[PCAP_ERRBUF_SIZE];
     inet_aton(argv[2], (in_addr*)sender_ip); // victim
     inet_aton(argv[3], (in_addr*)target_ip); // router
 
